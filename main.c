@@ -25,7 +25,6 @@ typedef struct Position {
     char yO;
     char xN;
     char yN;
-    char type;
 } Position;
 
 
@@ -39,6 +38,11 @@ Room *create_room(ll_t *list, int client1_fd) {
     code = rand_string(code, 7);
     code[3] = '-';
     new_room->invite_code = code;
+
+    char test[8];
+    strncpy(test, code, 7);
+    test[7] = 0;
+    printf("%s\n", test);
 
     ll_insert_last(list, new_room);
     return new_room;
@@ -122,7 +126,7 @@ void *process_client(void *arg) {
             break;
     }
 
-    printf("Closed\n");
+    printf("Closed %d\n", client_fd);
     close(client_fd);
 
     Room* room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
@@ -132,7 +136,7 @@ void *process_client(void *arg) {
             if (room_to_close->clients[i] == client_fd)
                 room_to_close->clients[i] = -1;
 
-        // TODO: sleep(5);
+        sleep(5);
 
         int offline_clients = 0;
         for (int i = 0; i < 2; ++i)
@@ -163,7 +167,7 @@ int main() {
     bzero(&sock_addr, sizeof(sock_addr));
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    sock_addr.sin_port = htons(8082);
+    sock_addr.sin_port = htons(8081);
 
     if (bind(sock_fd, (const struct sockaddr *) &sock_addr, sizeof(sock_addr)) == -1) {
         printf("Bind error!\n");
