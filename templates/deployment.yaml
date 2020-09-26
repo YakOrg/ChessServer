@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chess-server.fullname" . }}
+  labels:
+    {{- include "chess-server.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "chess-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chess-server.selectorLabels" . | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: image-pull-secret
+      nodeName: {{ .Values.nodeName }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: proto
+              containerPort: 8081
+              protocol: TCP

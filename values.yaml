@@ -1,0 +1,15 @@
+image:
+  repository: registry.oceancraft.ru/k8s/chess-server
+  tag: latest
+  pullPolicy: Always
+
+imageCredentials:
+  registry: ""
+  username: ""
+  password: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+nodeName: bucket

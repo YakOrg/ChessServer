@@ -1,0 +1,48 @@
+kind: pipeline
+type: kubernetes
+name: default
+
+steps:
+  - name: build
+    image: registry.oceancraft.ru/env/c-build-env:6654814ef3e97aa1a1a799efde9bd3be11ddc790
+    commands:
+      - cmake -S .
+      - make
+      - ls -l
+  - name: publish
+    image: banzaicloud/drone-kaniko
+    settings:
+      registry: registry.oceancraft.ru
+      repo: k8s/chess-server
+      tags:
+        - ${DRONE_COMMIT_SHA}
+      cache: true
+      username:
+        from_secret: REGISTRY_USER
+      password:
+        from_secret: REGISTRY_PASSWORD
+    when:
+      branch:
+        - master
+  - name: deploy
+    image: registry.oceancraft.ru/env/tillerless-helm:v.1.5
+    environment:
+      HELM_TILLER_SILENT: true
+      HELM_TILLER_LOGS: false
+      KUBECONFIG: /etc/deploy/config
+      kube_config:
+        from_secret: K8S_CONFIG
+      REGISTRY_USER:
+        from_secret: REGISTRY_USER
+      REGISTRY_PASSWORD:
+        from_secret: REGISTRY_PASSWORD
+    commands:
+      - mkdir -p /etc/deploy
+      - echo $kube_config | base64 -d >> $KUBECONFIG
+      - helm tiller run -- helm upgrade --wait --atomic --install schelduer-bot . --namespace=schelduer-bot --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.registry=registry.oceancraft.ru  --set=imageCredentials.username=$REGISTRY_USER   --set=imageCredentials.password=$REGISTRY_PASSWORD
+    when:
+      branch:
+        - master
+
+node_selector:
+  kubernetes.io/hostname: bucket
