@@ -6,6 +6,7 @@ metadata:
     {{- include "chess-server.labels" . | nindent 4 }}
 spec:
   type: NodePort
+  externalTrafficPolicy: Local
   ports:
     - port: 8081
       targetPort: 8081
