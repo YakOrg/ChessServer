@@ -8,7 +8,6 @@ steps:
     commands:
       - cmake -S .
       - make
-      - ls -l
   - name: publish
     image: banzaicloud/drone-kaniko
     settings:
@@ -39,7 +38,7 @@ steps:
     commands:
       - mkdir -p /etc/deploy
       - echo $kube_config | base64 -d >> $KUBECONFIG
-      - helm tiller run -- helm upgrade --wait --atomic --install schelduer-bot . --namespace=schelduer-bot --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.registry=registry.oceancraft.ru  --set=imageCredentials.username=$REGISTRY_USER   --set=imageCredentials.password=$REGISTRY_PASSWORD
+      - helm tiller run -- helm upgrade --wait --atomic --install chess-game . --namespace=chess-game --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.registry=registry.oceancraft.ru  --set=imageCredentials.username=$REGISTRY_USER   --set=imageCredentials.password=$REGISTRY_PASSWORD
     when:
       branch:
         - master
