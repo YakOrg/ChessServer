@@ -18,8 +18,8 @@ char *rand_string(char *str, size_t size) {
 }
 
 typedef struct Room {
-    int* clients;
-    char* invite_code;
+    int *clients;
+    char *invite_code;
 } Room;
 
 typedef struct Position {
@@ -29,6 +29,21 @@ typedef struct Position {
     char yN;
 } Position;
 
+
+int send_data(int sock_fd, void *data, int len) {
+    unsigned char *data_ptr = (unsigned char *) data;
+    int numSent;
+
+    while (len > 0) {
+        numSent = send(sock_fd, data_ptr, len, 0);
+        if (numSent == -1)
+            return -1;
+        data_ptr += numSent;
+        len -= numSent;
+    }
+
+    return 0;
+}
 
 Room *create_room(ll_t *list, int client1_fd) {
     Room *new_room = malloc(sizeof(struct Room));
@@ -55,7 +70,6 @@ int search_by_invite_code(void *data, void *args) {
     char *code = args;
     return !strncmp(room->invite_code, code, 7);
 }
-
 
 
 int search_by_client_fd(void *data, void *args) {
@@ -103,27 +117,30 @@ void *process_client(void *arg) {
 
     pthread_detach(pthread_self());
 
+    char package_type;
     for (;;) {
-        char package_type;
-        if (recv(client_fd, &package_type, 1, 0) < 1)
+        if (recv(client_fd, &package_type, 1, MSG_WAITALL) < 1)
             break;
         if (package_type == 0) {
-            Room* room = ll_get_search(list, search_by_client_fd, &client_fd);
+            Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
             if (room == 0) {
                 room = create_room(list, client_fd);
                 printf("Room created by %d\n", client_fd);
             }
-            if (write(client_fd, room->invite_code, 7) < 1)
+            if (send_data(client_fd, room->invite_code, 7) == -1)
                 break;
         } else if (package_type == 1) {
             char code[7];
-            read(client_fd, &code, 7);
+            if (recv(client_fd, &code, 7, MSG_WAITALL) < 1)
+                break;
             join_room(list, client_fd, code);
         } else if (package_type == 2) {
             Position position;
-            read(client_fd, &position, sizeof(position));
+            if (recv(client_fd, &position, sizeof(position), MSG_WAITALL) < 1)
+                break;
             int second_fd = get_other_client_fd(list, client_fd);
-            write(second_fd, &position, sizeof(position));
+            if (send_data(second_fd, &position, sizeof(position)) == -1)
+                break;
         } else
             break;
     }
@@ -131,27 +148,42 @@ void *process_client(void *arg) {
     printf("Closed %d\n", client_fd);
     close(client_fd);
 
-    Room* room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
+    Room *room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
 
-    if (room_to_close != 0) {
+    if (room_to_close != 0)
         for (int i = 0; i < 2; ++i)
             if (room_to_close->clients[i] == client_fd)
                 room_to_close->clients[i] = -1;
 
-        sleep(5);
-
-        int offline_clients = 0;
-        for (int i = 0; i < 2; ++i)
-            if (room_to_close->clients[i] == -1)
-                offline_clients++;
-
-        if (offline_clients == 2) {
-            ll_remove_search(list, search_by_invite_code, room_to_close->invite_code);
-            printf("Room removed\n");
-        }
-    }
-
     return 0;
+}
+
+int is_room_offline(Room *room) {
+    int offline_clients = 0;
+    for (int i = 0; i < 2; ++i)
+        if (room->clients[i] == -1)
+            offline_clients++;
+    return offline_clients == 2;
+}
+
+void *gc(void *arg) {
+    pthread_detach(pthread_self());
+    ll_t *list = arg;
+    for (;;) {
+        int n = list->len;
+        for (int i = 0; i < n; ++i) {
+            Room *room = ll_get_n(list, i);
+            if (room != 0 && is_room_offline(room)) {
+                printf("Room '%s' is waiting\n", room->invite_code);
+                sleep(5);
+                if (is_room_offline(room)) {
+                    printf("Room '%s' had been garbage collected\n", room->invite_code);
+                    ll_remove_search(list, search_by_invite_code, room->invite_code);
+                }
+            }
+        }
+        sleep(5);
+    }
 }
 
 int main() {
@@ -185,6 +217,9 @@ int main() {
     socklen_t client_addr_len = sizeof(client_addr);
 
     ll_t *list = ll_new(free_room);
+
+    pthread_t gc_id;
+    pthread_create(&gc_id, NULL, &gc, list);
 
     pthread_t tid;
     for (;;) {
