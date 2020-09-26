@@ -95,6 +95,7 @@ void join_room(ll_t *list, int client_fd, char *code, char* address) {
 
 void free_room(void *memory) {
     Room *room = memory;
+    free(room->clients);
     free(room->invite_code);
     free(room);
 }
