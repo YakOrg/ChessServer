@@ -1,8 +1,10 @@
+#include <signal.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <sys/socket.h>
-#include <netdb.h>
-#include <strings.h>
-#include <libnet.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
 #include "ll.h"
 
 char *rand_string(char *str, size_t size) {
