@@ -9,7 +9,7 @@ spec:
   ports:
     - port: 8081
       targetPort: 8081
-      nodePort: 38081
+      nodePort: 30881
       protocol: TCP
   selector:
     {{- include "chess-server.selectorLabels" . | nindent 4 }}
