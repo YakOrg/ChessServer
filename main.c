@@ -56,11 +56,6 @@ Room *create_room(ll_t *list, int client1_fd) {
     code[3] = '-';
     new_room->invite_code = code;
 
-    char test[8];
-    strncpy(test, code, 7);
-    test[7] = 0;
-    printf("%s\n", test);
-
     ll_insert_last(list, new_room);
     return new_room;
 }
@@ -86,13 +81,13 @@ int get_other_client_fd(ll_t *list, int client_fd) {
     return -1;
 }
 
-void join_room(ll_t *list, int client_fd, char *code) {
+void join_room(ll_t *list, int client_fd, char *code, char* address) {
     Room *room = ll_get_search(list, search_by_invite_code, code);
     if (room != NULL)
         for (int i = 0; i < 2; ++i) {
             if (room->clients[i] == -1) {
                 room->clients[i] = client_fd;
-                printf("Client %d joined to room with %d\n", client_fd, get_other_client_fd(list, client_fd));
+                printf("Client %s joined to room '%s'\n", address, code);
                 return;
             }
         }
@@ -107,15 +102,27 @@ void free_room(void *memory) {
 typedef struct Process_args {
     ll_t *list;
     int sock_fd;
+    char *address;
 } Process_args;
+
+int is_room_offline(Room *room) {
+    int offline_clients = 0;
+    for (int i = 0; i < 2; ++i)
+        if (room->clients[i] == -1)
+            offline_clients++;
+    return offline_clients == 2;
+}
 
 void *process_client(void *arg) {
     Process_args *process_args = arg;
     int client_fd = process_args->sock_fd;
     ll_t *list = process_args->list;
+    char *address = process_args->address;
     free(process_args);
 
     pthread_detach(pthread_self());
+
+    printf("Connected %s\n", address);
 
     char package_type;
     for (;;) {
@@ -125,7 +132,12 @@ void *process_client(void *arg) {
             Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
             if (room == 0) {
                 room = create_room(list, client_fd);
-                printf("Room created by %d\n", client_fd);
+
+                char code[8];
+                strncpy(code, room->invite_code, 7);
+                code[7] = 0;
+
+                printf("Room '%s' created by %s\n", code, address);
             }
             if (send_data(client_fd, room->invite_code, 7) == -1)
                 break;
@@ -133,7 +145,7 @@ void *process_client(void *arg) {
             char code[7];
             if (recv(client_fd, &code, 7, MSG_WAITALL) < 1)
                 break;
-            join_room(list, client_fd, code);
+            join_room(list, client_fd, code, address);
         } else if (package_type == 2) {
             Position position;
             if (recv(client_fd, &position, sizeof(position), MSG_WAITALL) < 1)
@@ -145,48 +157,44 @@ void *process_client(void *arg) {
             break;
     }
 
-    printf("Closed %d\n", client_fd);
+
     close(client_fd);
+    printf("Closed %s\n", address);
+    free(address);
 
     Room *room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
 
-    if (room_to_close != 0)
+    if (room_to_close != 0) {
+        char invite_code[7];
+        strncpy(invite_code, room_to_close->invite_code, 7);
+
         for (int i = 0; i < 2; ++i)
             if (room_to_close->clients[i] == client_fd)
                 room_to_close->clients[i] = -1;
 
+        sleep(5);
+
+        room_to_close = ll_get_search(list, search_by_invite_code, invite_code);
+        if (room_to_close != 0 && is_room_offline(room_to_close)) {
+            printf("Room '%s' removed\n", invite_code);
+            ll_remove_search(list, search_by_invite_code, invite_code);
+        }
+    }
+
     return 0;
 }
 
-int is_room_offline(Room *room) {
-    int offline_clients = 0;
-    for (int i = 0; i < 2; ++i)
-        if (room->clients[i] == -1)
-            offline_clients++;
-    return offline_clients == 2;
-}
-
-void *gc(void *arg) {
-    pthread_detach(pthread_self());
-    ll_t *list = arg;
-    for (;;) {
-        int n = list->len;
-        for (int i = 0; i < n; ++i) {
-            Room *room = ll_get_n(list, i);
-            if (room != 0 && is_room_offline(room)) {
-                printf("Room '%s' is waiting\n", room->invite_code);
-                sleep(5);
-                if (is_room_offline(room)) {
-                    printf("Room '%s' had been garbage collected\n", room->invite_code);
-                    ll_remove_search(list, search_by_invite_code, room->invite_code);
-                }
-            }
-        }
-        sleep(5);
+int get_int_len(int value) {
+    int l = 1;
+    while (value > 9) {
+        l++;
+        value /= 10;
     }
+    return l;
 }
 
 int main() {
+    setbuf(stdout, NULL);
     signal(SIGPIPE, SIG_IGN);
 
     FILE *urandom = fopen("/dev/random", "r");
@@ -218,22 +226,22 @@ int main() {
 
     ll_t *list = ll_new(free_room);
 
-    pthread_t gc_id;
-    pthread_create(&gc_id, NULL, &gc, list);
-
     pthread_t tid;
     for (;;) {
         int client_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 
         char buff[1024];
-        printf("Connected from %s:%hu\n",
-               inet_ntop(AF_INET, &client_addr.sin_addr, buff, sizeof(buff)),
-               ntohs(client_addr.sin_port)
-        );
+        const char *ip = inet_ntop(AF_INET, &client_addr.sin_addr, buff, sizeof(buff));
+        int port = ntohs(client_addr.sin_port);
+
+        size_t len = strlen(ip) + get_int_len(port) + 1;
+        char *address = malloc(len * sizeof(char));
+        snprintf(address, len, "%s:%d", ip, port);
 
         Process_args *args = malloc(sizeof(Process_args));
         args->list = list;
         args->sock_fd = client_fd;
+        args->address = address;
 
         pthread_create(&tid, NULL, &process_client, args);
     }
