@@ -4,7 +4,7 @@ name: default
 
 steps:
   - name: build
-    image: registry.oceancraft.ru/env/c-build-env:6654814ef3e97aa1a1a799efde9bd3be11ddc790
+    image: registry.oceancraft.ru/env/c-build-env:v1.0
     commands:
       - cmake -S .
       - make
