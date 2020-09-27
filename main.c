@@ -37,12 +37,12 @@ int send_all(int sock_fd, void *data, int len) {
     while (len > 0) {
         num_sent = send(sock_fd, data_ptr, len, 0);
         if (num_sent < 1)
-            return -1;
+            return 0;
         data_ptr += num_sent;
         len -= num_sent;
     }
 
-    return 0;
+    return 1;
 }
 
 int recv_all(int sock_fd, void *data, int len) {
@@ -50,12 +50,12 @@ int recv_all(int sock_fd, void *data, int len) {
     while (len > 0) {
         num_recv = recv(sock_fd, data, len, 0);
         if (num_recv < 1)
-            return -1;
+            return 0;
         data += num_recv;
         len -= num_recv;
     }
 
-    return 0;
+    return 1;
 }
 
 Room *create_room(ll_t *list, int client1_fd) {
@@ -94,7 +94,7 @@ int get_other_client_fd(ll_t *list, int client_fd) {
     return -1;
 }
 
-void join_room(ll_t *list, int client_fd, char *code, char* address) {
+void join_room(ll_t *list, int client_fd, char *code, char *address) {
     Room *room = ll_get_search(list, search_by_invite_code, code);
     if (room != NULL)
         for (int i = 0; i < 2; ++i) {
@@ -128,48 +128,72 @@ int is_room_offline(Room *room) {
 }
 
 void *process_client(void *arg) {
+    pthread_detach(pthread_self());
+
     Process_args *process_args = arg;
     int client_fd = process_args->sock_fd;
     ll_t *list = process_args->list;
     char *address = process_args->address;
     free(process_args);
 
-    pthread_detach(pthread_self());
 
+    /*
+     * Close socket if we won't read
+     * enough data in 15s
+     */
+
+    struct timeval timeout;
+    timeout.tv_sec = 15;
+    timeout.tv_usec = 0;
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+
+    // Filter random connections (spam)
+    char *proto = "CHESS_PROTO/1.0";
+    size_t proto_len = strlen(proto);
+    char client_proto[proto_len + 1];
+    if (!recv_all(client_fd, &client_proto, proto_len) || strncmp(proto, client_proto, proto_len) != 0) {
+        close(client_fd);
+        return 0;
+    }
+
+
+    // Process valid client connection
     printf("Connected %s\n", address);
 
     unsigned char package_type;
     for (;;) {
-        if (recv_all(client_fd, &package_type, 1) == -1)
+        if (!recv_all(client_fd, &package_type, 1))
             break;
         if (package_type == 0) {
             Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
             if (room == 0) {
                 room = create_room(list, client_fd);
 
+                // Normalize invite code
                 char code[8];
                 strncpy(code, room->invite_code, 7);
                 code[7] = 0;
 
                 printf("Room '%s' created by %s\n", code, address);
             }
-            if (send_all(client_fd, room->invite_code, 7) == -1)
+            if (!send_all(client_fd, room->invite_code, 7))
                 break;
         } else if (package_type == 1) {
             char code[7];
-            if (recv_all(client_fd, &code, 7) == -1)
+            if (!recv_all(client_fd, &code, 7))
                 break;
             join_room(list, client_fd, code, address);
         } else if (package_type == 2) {
             Position position;
-            if (recv_all(client_fd, &position, sizeof(position)) == -1)
+            if (!recv_all(client_fd, &position, sizeof(position)))
                 break;
             int second_fd = get_other_client_fd(list, client_fd);
-            if (send_all(second_fd, &position, sizeof(position)) == -1)
+            if (!send_all(second_fd, &position, sizeof(position)))
                 break;
         } else if (package_type == 200) {
             int len = list->len;
-            if (send_all(client_fd, &len, sizeof(int)) == -1)
+            if (!send_all(client_fd, &len, sizeof(int)))
                 break;
         } else
             break;
@@ -227,7 +251,7 @@ int main() {
     bzero(&sock_addr, sizeof(sock_addr));
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    sock_addr.sin_port = htons(8081);
+    sock_addr.sin_port = htons(8082);
 
     if (bind(sock_fd, (const struct sockaddr *) &sock_addr, sizeof(sock_addr)) == -1) {
         printf("Bind error!\n");
