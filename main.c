@@ -30,16 +30,29 @@ typedef struct Position {
 } Position;
 
 
-int send_data(int sock_fd, void *data, int len) {
+int send_all(int sock_fd, void *data, int len) {
     unsigned char *data_ptr = (unsigned char *) data;
-    int numSent;
+    int num_sent;
 
     while (len > 0) {
-        numSent = send(sock_fd, data_ptr, len, 0);
-        if (numSent == -1)
+        num_sent = send(sock_fd, data_ptr, len, 0);
+        if (num_sent < 1)
             return -1;
-        data_ptr += numSent;
-        len -= numSent;
+        data_ptr += num_sent;
+        len -= num_sent;
+    }
+
+    return 0;
+}
+
+int recv_all(int sock_fd, void *data, int len) {
+    int num_recv;
+    while (len > 0) {
+        num_recv = recv(sock_fd, data, len, 0);
+        if (num_recv < 1)
+            return -1;
+        data += num_recv;
+        len -= num_recv;
     }
 
     return 0;
@@ -125,9 +138,9 @@ void *process_client(void *arg) {
 
     printf("Connected %s\n", address);
 
-    char package_type;
+    unsigned char package_type;
     for (;;) {
-        if (recv(client_fd, &package_type, 1, MSG_WAITALL) < 1)
+        if (recv_all(client_fd, &package_type, 1) == -1)
             break;
         if (package_type == 0) {
             Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
@@ -140,19 +153,23 @@ void *process_client(void *arg) {
 
                 printf("Room '%s' created by %s\n", code, address);
             }
-            if (send_data(client_fd, room->invite_code, 7) == -1)
+            if (send_all(client_fd, room->invite_code, 7) == -1)
                 break;
         } else if (package_type == 1) {
             char code[7];
-            if (recv(client_fd, &code, 7, MSG_WAITALL) < 1)
+            if (recv_all(client_fd, &code, 7) == -1)
                 break;
             join_room(list, client_fd, code, address);
         } else if (package_type == 2) {
             Position position;
-            if (recv(client_fd, &position, sizeof(position), MSG_WAITALL) < 1)
+            if (recv_all(client_fd, &position, sizeof(position)) == -1)
                 break;
             int second_fd = get_other_client_fd(list, client_fd);
-            if (send_data(second_fd, &position, sizeof(position)) == -1)
+            if (send_all(second_fd, &position, sizeof(position)) == -1)
+                break;
+        } else if (package_type == 200) {
+            int len = list->len;
+            if (send_all(client_fd, &len, sizeof(int)) == -1)
                 break;
         } else
             break;
@@ -227,7 +244,7 @@ int main() {
 
     ll_t *list = ll_new(free_room);
 
-    pthread_t tid;
+
     for (;;) {
         int client_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 
@@ -244,6 +261,7 @@ int main() {
         args->sock_fd = client_fd;
         args->address = address;
 
+        pthread_t tid;
         pthread_create(&tid, NULL, &process_client, args);
     }
 }
