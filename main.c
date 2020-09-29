@@ -251,7 +251,7 @@ int main() {
     bzero(&sock_addr, sizeof(sock_addr));
     sock_addr.sin_family = AF_INET;
     sock_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    sock_addr.sin_port = htons(8082);
+    sock_addr.sin_port = htons(8081);
 
     if (bind(sock_fd, (const struct sockaddr *) &sock_addr, sizeof(sock_addr)) == -1) {
         printf("Bind error!\n");
