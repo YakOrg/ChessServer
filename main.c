@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "ll.h"
 
 char *rand_string(char *str, size_t size) {
@@ -157,6 +158,8 @@ void *process_client(void *arg) {
         return 0;
     }
 
+    timeout.tv_sec = INT_MAX;
+    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     // Process valid client connection
     printf("Connected %s\n", address);
