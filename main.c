@@ -154,6 +154,7 @@ void *process_client(void *arg) {
     size_t proto_len = strlen(proto);
     char client_proto[proto_len + 1];
     if (!recv_all(client_fd, &client_proto, proto_len) || strncmp(proto, client_proto, proto_len) != 0) {
+        free(address);
         close(client_fd);
         return 0;
     }
