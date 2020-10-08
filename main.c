@@ -291,7 +291,10 @@ int main() {
 
 
     for (;;) {
-        int client_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+        int client_fd;
+
+        if ((client_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addr_len)) == -1)
+            continue;
 
         char buff[1024];
         const char *ip = inet_ntop(AF_INET, &client_addr.sin_addr, buff, sizeof(buff));
