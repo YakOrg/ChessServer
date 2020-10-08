@@ -6,15 +6,30 @@
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <sodium.h>
 #include "ll.h"
 
-char *rand_string(char *str, size_t size) {
+void *malloc_wr(size_t size) {
+    void *result = malloc(size);
+    if (result != 0)
+        return result;
+    else {
+        printf("Memory allocation error!\n");
+        exit(1);
+    }
+}
+
+char *gen_invite_code(char *str) {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    if (size)
-        for (size_t n = 0; n < size; n++) {
-            int key = rand() % (int) (sizeof charset - 1);
+
+    for (size_t n = 0; n < 7; n++)
+        if (n == 3) {
+            str[n] = '-';
+        } else {
+            unsigned int key = randombytes_uniform(sizeof(charset) - 1);
             str[n] = charset[key];
         }
+
     return str;
 }
 
@@ -60,14 +75,13 @@ int recv_all(int sock_fd, void *data, int len) {
 }
 
 Room *create_room(ll_t *list, int client1_fd) {
-    Room *new_room = malloc(sizeof(struct Room));
-    new_room->clients = malloc(sizeof(int) * 2);
+    Room *new_room = malloc_wr(sizeof(struct Room));
+    new_room->clients = malloc_wr(sizeof(int) * 2);
     new_room->clients[0] = client1_fd;
     new_room->clients[1] = -1;
 
-    char *code = malloc(sizeof(char) * 7);
-    code = rand_string(code, 7);
-    code[3] = '-';
+    char *code = malloc_wr(sizeof(char) * 7);
+    code = gen_invite_code(code);
     new_room->invite_code = code;
 
     ll_insert_last(list, new_room);
@@ -243,13 +257,16 @@ int main() {
     setbuf(stdout, NULL);
     signal(SIGPIPE, SIG_IGN);
 
-    FILE *urandom = fopen("/dev/random", "r");
-    unsigned long seed;
-    fgets((char *) &seed, sizeof(seed), urandom);
-    fclose(urandom);
-    srand(seed);
+    if (sodium_init() == -1) {
+        printf("Libsodium init error\n");
+        return 1;
+    }
 
-    int sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int sock_fd;
+    if ((sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+        printf("Socket create error!\n");
+        return 1;
+    }
 
     struct sockaddr_in sock_addr;
     bzero(&sock_addr, sizeof(sock_addr));
@@ -281,10 +298,10 @@ int main() {
         int port = ntohs(client_addr.sin_port);
 
         size_t len = strlen(ip) + get_int_len(port) + 1;
-        char *address = malloc(len * sizeof(char));
+        char *address = malloc_wr(len * sizeof(char));
         snprintf(address, len, "%s:%d", ip, port);
 
-        Process_args *args = malloc(sizeof(Process_args));
+        Process_args *args = malloc_wr(sizeof(Process_args));
         args->list = list;
         args->sock_fd = client_fd;
         args->address = address;

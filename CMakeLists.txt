@@ -6,3 +6,6 @@ add_executable(chess-server main.c ll.c ll.h)
 
 find_library(pthread pthread)
 target_link_libraries(chess-server pthread)
+
+find_library(sodium sodium)
+target_link_libraries(chess-server sodium)
