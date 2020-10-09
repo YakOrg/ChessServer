@@ -36,6 +36,7 @@ steps:
       REGISTRY_PASSWORD:
         from_secret: REGISTRY_PASSWORD
     commands:
+      - ls -l
       - mkdir -p /etc/deploy
       - echo $kube_config | base64 -d >> $KUBECONFIG
       - helm tiller run -- helm upgrade --wait --atomic --install chess-game . --namespace=chess-game --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.registry=registry.oceancraft.ru  --set=imageCredentials.username=$REGISTRY_USER   --set=imageCredentials.password=$REGISTRY_PASSWORD
