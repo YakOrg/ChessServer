@@ -8,4 +8,4 @@ find_library(pthread pthread)
 target_link_libraries(chess-server pthread)
 
 find_library(sodium sodium.a)
-target_link_libraries(chess-server sodium)
+target_link_libraries(chess-server -static sodium)
