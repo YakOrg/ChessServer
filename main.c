@@ -142,6 +142,11 @@ int is_room_offline(Room *room) {
     return offline_clients == 2;
 }
 
+#define PKG_CREATE_ROOM 0
+#define PKG_JOIN_ROOM 1
+#define PKG_MOVE 2
+#define PKG_STATUS 200
+
 void *process_client(void *arg) {
     pthread_detach(pthread_self());
 
@@ -183,12 +188,12 @@ void *process_client(void *arg) {
     for (;;) {
         if (!recv_all(client_fd, &package_type, 1))
             break;
-        if (package_type == 0) {
+        if (package_type == PKG_CREATE_ROOM) {
             Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
             if (room == 0) {
                 room = create_room(list, client_fd);
 
-                // Normalize invite code
+                // Add terminator to invite code
                 char code[8];
                 strncpy(code, room->invite_code, 7);
                 code[7] = 0;
@@ -197,21 +202,21 @@ void *process_client(void *arg) {
             }
             if (!send_all(client_fd, room->invite_code, 7))
                 break;
-        } else if (package_type == 1) {
+        } else if (package_type == PKG_JOIN_ROOM) {
             char code[7];
             if (!recv_all(client_fd, &code, 7))
                 break;
             join_room(list, client_fd, code, address);
-        } else if (package_type == 2) {
+        } else if (package_type == PKG_MOVE) {
             Position position;
             if (!recv_all(client_fd, &position, sizeof(position)))
                 break;
             int second_fd = get_other_client_fd(list, client_fd);
             if (!send_all(second_fd, &position, sizeof(position)))
                 break;
-        } else if (package_type == 200) {
-            int len = list->len;
-            if (!send_all(client_fd, &len, sizeof(int)))
+        } else if (package_type == PKG_STATUS) {
+            int rooms_count = list->len;
+            if (!send_all(client_fd, &rooms_count, sizeof(int)))
                 break;
         } else
             break;
@@ -232,6 +237,7 @@ void *process_client(void *arg) {
             if (room_to_close->clients[i] == client_fd)
                 room_to_close->clients[i] = -1;
 
+        // Wait for reconnection
         sleep(5);
 
         room_to_close = ll_get_search(list, search_by_invite_code, invite_code);
