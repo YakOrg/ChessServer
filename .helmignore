@@ -21,3 +21,12 @@
 .idea/
 *.tmproj
 .vscode/
+
+*.c
+*.h
+*.txt
+CMakeFiles
+Dockerfile
+Makefile
+chess-server
+cmake_install.cmake
