@@ -19,8 +19,19 @@ void *malloc_wr(size_t size) {
     }
 }
 
-char *gen_invite_code(char *str) {
+void *realloc_wr(void *ptr, size_t size) {
+    void *result = realloc(ptr, size);
+    if (result != 0)
+        return result;
+    else {
+        printf("Memory reallocation error!\n");
+        exit(1);
+    }
+}
+
+char *gen_invite_code() {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    char *str = malloc_wr(sizeof(char) * 7);
 
     for (size_t n = 0; n < 7; n++)
         if (n == 3) {
@@ -38,14 +49,6 @@ typedef struct Room {
     char *invite_code;
 } Room;
 
-typedef struct Position {
-    char xO;
-    char yO;
-    char xN;
-    char yN;
-} Position;
-
-
 int send_all(int sock_fd, void *data, int len) {
     unsigned char *data_ptr = (unsigned char *) data;
     int num_sent;
@@ -59,6 +62,13 @@ int send_all(int sock_fd, void *data, int len) {
     }
 
     return 1;
+}
+
+int send_pkg(int sock_fd, void *data, int len, unsigned char type) {
+    return
+            send_all(sock_fd, &type, sizeof(char))
+            ? send_all(sock_fd, data, len)
+            : 0;
 }
 
 int recv_all(int sock_fd, void *data, int len) {
@@ -80,8 +90,7 @@ Room *create_room(ll_t *list, int client1_fd) {
     new_room->clients[0] = client1_fd;
     new_room->clients[1] = -1;
 
-    char *code = malloc_wr(sizeof(char) * 7);
-    code = gen_invite_code(code);
+    char *code = gen_invite_code();
     new_room->invite_code = code;
 
     ll_insert_last(list, new_room);
@@ -142,10 +151,33 @@ int is_room_offline(Room *room) {
     return offline_clients == 2;
 }
 
+int transfer(ll_t *list, int src, int count, unsigned char type) {
+    char data[count];
+    if (!recv_all(src, data, count))
+        return 0;
+
+    int second_fd = get_other_client_fd(list, src);
+    if (second_fd != -1)
+        send_pkg(second_fd, data, count, type);
+
+    return 1;
+}
+
 #define PKG_CREATE_ROOM 0
 #define PKG_JOIN_ROOM 1
 #define PKG_MOVE 2
+#define PKG_CASTLING 3
+#define PKG_EN_PASSANT 4
+#define PKG_CHAT_MSG 100
 #define PKG_STATUS 200
+
+#define PKG_CLIENT_CODE 0
+#define PKG_CLIENT_ROOM_FULL 1
+#define PKG_CLIENT_MOVE 2
+#define PKG_CLIENT_CASTLING 3
+#define PKG_CLIENT_EN_PASSANT 4
+#define PKG_CLIENT_CHAT_MSG 100
+#define PKG_CLIENT_STATUS 200
 
 void *process_client(void *arg) {
     pthread_detach(pthread_self());
@@ -198,30 +230,56 @@ void *process_client(void *arg) {
                 strncpy(code, room->invite_code, 7);
                 code[7] = 0;
 
-                printf("Room '%s' created by %s\n", code, address);
+                printf("The room '%s' was created by %s\n", code, address);
             }
-            if (!send_all(client_fd, room->invite_code, 7))
+            if (!send_pkg(client_fd, room->invite_code, 7, PKG_CLIENT_CODE))
                 break;
         } else if (package_type == PKG_JOIN_ROOM) {
             char code[7];
             if (!recv_all(client_fd, &code, 7))
                 break;
             join_room(list, client_fd, code, address);
+            int other_fd = get_other_client_fd(list, client_fd);
+            if (other_fd != -1)
+                send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
         } else if (package_type == PKG_MOVE) {
-            Position position;
-            if (!recv_all(client_fd, &position, sizeof(position)))
+            if (!transfer(list, client_fd, 4, PKG_CLIENT_MOVE))
                 break;
-            int second_fd = get_other_client_fd(list, client_fd);
-            if (!send_all(second_fd, &position, sizeof(position)))
+        } else if (package_type == PKG_EN_PASSANT) {
+            if (!transfer(list, client_fd, 2, PKG_CLIENT_EN_PASSANT))
+                break;
+        } else if (package_type == PKG_CASTLING) {
+            if (!transfer(list, client_fd, 1, PKG_CLIENT_CASTLING))
                 break;
         } else if (package_type == PKG_STATUS) {
             int rooms_count = list->len;
-            if (!send_all(client_fd, &rooms_count, sizeof(int)))
+            if (!send_pkg(client_fd, &rooms_count, sizeof(int), PKG_CLIENT_STATUS))
                 break;
+        } else if (package_type == PKG_CHAT_MSG) {
+            char *message = 0;
+            char next;
+            int i = 0;
+            do {
+                if (message == 0)
+                    message = malloc_wr(sizeof(char));
+                else
+                    message = realloc_wr(message, i + 1);
+                if (!recv_all(client_fd, &next, 1))
+                    goto close_connection;
+                message[i] = next;
+                i++;
+            } while (next != 0);
+
+            int other_fd = get_other_client_fd(list, client_fd);
+            if (other_fd != -1)
+                send_pkg(other_fd, message, i, PKG_CLIENT_CHAT_MSG);
+
+            free(message);
         } else
             break;
     }
 
+    close_connection:
 
     close(client_fd);
     printf("Closed %s\n", address);
@@ -242,8 +300,8 @@ void *process_client(void *arg) {
 
         room_to_close = ll_get_search(list, search_by_invite_code, invite_code);
         if (room_to_close != 0 && is_room_offline(room_to_close)) {
-            printf("Room '%s' removed\n", invite_code);
             ll_remove_search(list, search_by_invite_code, invite_code);
+            printf("The room '%s' was removed\n", invite_code);
         }
     }
 
