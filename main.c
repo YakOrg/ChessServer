@@ -118,16 +118,17 @@ int get_other_client_fd(ll_t *list, int client_fd) {
     return -1;
 }
 
-void join_room(ll_t *list, int client_fd, char *code, char *address) {
+int join_room(ll_t *list, int client_fd, char *code, char *address) {
     Room *room = ll_get_search(list, search_by_invite_code, code);
     if (room != NULL)
         for (int i = 0; i < 2; ++i) {
             if (room->clients[i] == -1) {
                 room->clients[i] = client_fd;
                 printf("Client %s joined to room '%s'\n", address, code);
-                return;
+                return 1;
             }
         }
+    return 0;
 }
 
 void free_room(void *memory) {
@@ -176,6 +177,8 @@ int transfer(ll_t *list, int src, int count, unsigned char type) {
 #define PKG_CLIENT_MOVE 2
 #define PKG_CLIENT_CASTLING 3
 #define PKG_CLIENT_EN_PASSANT 4
+#define PKG_CLIENT_ROOM_NOT_FOUND 5
+#define PKG_CLIENT_JOINED 6
 #define PKG_CLIENT_CHAT_MSG 100
 #define PKG_CLIENT_STATUS 200
 
@@ -238,10 +241,16 @@ void *process_client(void *arg) {
             char code[7];
             if (!recv_all(client_fd, &code, 7))
                 break;
-            join_room(list, client_fd, code, address);
-            int other_fd = get_other_client_fd(list, client_fd);
-            if (other_fd != -1)
-                send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
+            if (join_room(list, client_fd, code, address)) {
+                if (!send_pkg(client_fd, 0, 0, PKG_CLIENT_JOINED))
+                    break;
+                int other_fd = get_other_client_fd(list, client_fd);
+                if (other_fd != -1)
+                    send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
+            } else {
+                if (!send_pkg(client_fd, 0, 0, PKG_CLIENT_ROOM_NOT_FOUND))
+                    break;
+            }
         } else if (package_type == PKG_MOVE) {
             if (!transfer(list, client_fd, 4, PKG_CLIENT_MOVE))
                 break;
