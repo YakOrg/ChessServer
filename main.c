@@ -68,7 +68,7 @@ int send_pkg(int sock_fd, void *body, int body_size, unsigned char id) {
     size_t package_size = sizeof(unsigned char) + body_size;
     char package[package_size];
     memcpy(&package, &id, sizeof(unsigned char));
-    memcpy(&package, body, body_size);
+    memcpy(&package + sizeof(unsigned char), body, body_size);
     return send_all(sock_fd, &package, package_size);
 }
 
