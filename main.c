@@ -64,11 +64,12 @@ int send_all(int sock_fd, void *data, int len) {
     return 1;
 }
 
-int send_pkg(int sock_fd, void *data, int len, unsigned char type) {
-    return
-            send_all(sock_fd, &type, sizeof(char))
-            ? send_all(sock_fd, data, len)
-            : 0;
+int send_pkg(int sock_fd, void *body, int body_size, unsigned char id) {
+    size_t package_size = sizeof(unsigned char) + body_size;
+    char package[package_size];
+    memcpy(&package, &id, sizeof(unsigned char));
+    memcpy(&package, body, body_size);
+    return send_all(sock_fd, &package, package_size);
 }
 
 int recv_all(int sock_fd, void *data, int len) {
@@ -169,6 +170,7 @@ int transfer(ll_t *list, int src, int count, unsigned char type) {
 #define PKG_MOVE 2
 #define PKG_CASTLING 3
 #define PKG_EN_PASSANT 4
+#define PKG_PROMOTION 5
 #define PKG_CHAT_MSG 100
 #define PKG_STATUS 200
 
@@ -179,6 +181,7 @@ int transfer(ll_t *list, int src, int count, unsigned char type) {
 #define PKG_CLIENT_EN_PASSANT 4
 #define PKG_CLIENT_ROOM_NOT_FOUND 5
 #define PKG_CLIENT_JOINED 6
+#define PKG_CLIENT_PROMOTION 7
 #define PKG_CLIENT_CHAT_MSG 100
 #define PKG_CLIENT_STATUS 200
 
@@ -260,24 +263,30 @@ void *process_client(void *arg) {
         } else if (package_type == PKG_CASTLING) {
             if (!transfer(list, client_fd, 1, PKG_CLIENT_CASTLING))
                 break;
+        } else if (package_type == PKG_PROMOTION) {
+            if (!transfer(list, client_fd, 1, PKG_CLIENT_PROMOTION))
+                break;
         } else if (package_type == PKG_STATUS) {
             int rooms_count = list->len;
             if (!send_pkg(client_fd, &rooms_count, sizeof(int), PKG_CLIENT_STATUS))
                 break;
         } else if (package_type == PKG_CHAT_MSG) {
             char *message = 0;
-            char next;
+            char next_char;
             int i = 0;
             do {
-                if (message == 0)
-                    message = malloc_wr(sizeof(char));
-                else
-                    message = realloc_wr(message, i + 1);
-                if (!recv_all(client_fd, &next, 1))
+                message = (message == 0)
+                          ? malloc_wr(sizeof(char))
+                          : realloc_wr(message, i + sizeof(char));
+
+                if (!recv_all(client_fd, &next_char, sizeof(char))) {
+                    free(message);
                     goto close_connection;
-                message[i] = next;
+                }
+
+                message[i] = next_char;
                 i++;
-            } while (next != 0);
+            } while (next_char != 0);
 
             int other_fd = get_other_client_fd(list, client_fd);
             if (other_fd != -1)
