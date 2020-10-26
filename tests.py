@@ -29,6 +29,9 @@ PKG_CLIENT_PROMOTION = 7
 PKG_CLIENT_CHAT_MSG = 100
 PKG_CLIENT_STATUS = 200
 
+if os.getenv("CI") is not None:
+    p = subprocess.Popen(['./chess-server'], stdout=subprocess.DEVNULL)
+
 context.log_level = logging.FATAL
 unittest.TestLoader.sortTestMethodsUsing = None
 
@@ -104,6 +107,8 @@ class TestServer(unittest.TestCase):
         host.send_raw(message)
         self.assertEqual(p_byte(client.recvn(1)), PKG_CLIENT_CHAT_MSG)
         self.assertEqual(client.recvuntil('\0'), message)
+        client.close()
+        host.close()
 
 
 if __name__ == '__main__':

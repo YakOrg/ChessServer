@@ -9,10 +9,9 @@ steps:
       - cmake -S .
       - make
   - name: test
-    image: pwntools/pwntools
+    image: registry.oceancraft.ru/env/pwntools:latest
     commands:
-      - ./chess-server &
-      - python ./tests.py
+      - python3 ./tests.py
   - name: publish
     image: banzaicloud/drone-kaniko
     settings:
