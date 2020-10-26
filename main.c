@@ -56,20 +56,20 @@ int send_all(int sock_fd, void *data, int len) {
     while (len > 0) {
         num_sent = send(sock_fd, data_ptr, len, 0);
         if (num_sent < 1)
-            return 0;
+            return 1;
         data_ptr += num_sent;
         len -= num_sent;
     }
 
-    return 1;
+    return 0;
 }
 
 int send_pkg(int sock_fd, void *body, int body_size, unsigned char id) {
-    size_t package_size = sizeof(unsigned char) + body_size;
+    size_t package_size = sizeof(char) + body_size;
     char package[package_size];
-    memcpy(package, &id, sizeof(unsigned char));
-    memcpy(package + sizeof(unsigned char), body, body_size);
-    return send_all(sock_fd, &package, package_size);
+    memcpy(package, &id, sizeof(char));
+    memcpy(package + sizeof(char), body, body_size);
+    return send_all(sock_fd, package, package_size);
 }
 
 int recv_all(int sock_fd, void *data, int len) {
@@ -77,12 +77,12 @@ int recv_all(int sock_fd, void *data, int len) {
     while (len > 0) {
         num_recv = recv(sock_fd, data, len, 0);
         if (num_recv < 1)
-            return 0;
+            return 1;
         data += num_recv;
         len -= num_recv;
     }
 
-    return 1;
+    return 0;
 }
 
 Room *create_room(ll_t *list, int client1_fd) {
@@ -155,14 +155,21 @@ int is_room_offline(Room *room) {
 
 int transfer(ll_t *list, int src, int count, unsigned char type) {
     char data[count];
-    if (!recv_all(src, data, count))
-        return 0;
+    if (recv_all(src, data, count))
+        return 1;
 
     int second_fd = get_other_client_fd(list, src);
     if (second_fd != -1)
         send_pkg(second_fd, data, count, type);
 
-    return 1;
+    return 0;
+}
+
+void set_timeout(int sock_fd, int seconds) {
+    struct timeval timeout;
+    timeout.tv_sec = seconds;
+    timeout.tv_usec = 0;
+    setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 }
 
 #define PKG_CREATE_ROOM 0
@@ -200,102 +207,106 @@ void *process_client(void *arg) {
      * enough data in 15s
      */
 
-    struct timeval timeout;
-    timeout.tv_sec = 15;
-    timeout.tv_usec = 0;
-    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    set_timeout(client_fd, 15);
 
 
     // Filter random connections (spam)
     char *proto = "CHESS_PROTO/1.0";
     size_t proto_len = strlen(proto);
-    char client_proto[proto_len + 1];
-    if (!recv_all(client_fd, &client_proto, proto_len) || strncmp(proto, client_proto, proto_len) != 0) {
+    char client_proto[proto_len];
+    if (recv_all(client_fd, &client_proto, proto_len) || strncmp(proto, client_proto, proto_len) != 0) {
         free(address);
         close(client_fd);
         return 0;
     }
 
-    timeout.tv_sec = INT_MAX;
-    setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
     // Process valid client connection
     printf("Connected %s\n", address);
 
+    int error = 0;
     unsigned char package_type;
-    for (;;) {
-        if (!recv_all(client_fd, &package_type, 1))
-            break;
-        if (package_type == PKG_CREATE_ROOM) {
-            Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
-            if (room == 0) {
-                room = create_room(list, client_fd);
+    while (!error && !recv_all(client_fd, &package_type, sizeof(char)))
+        switch (package_type) {
+            case PKG_CREATE_ROOM: {
+                Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
+                if (room == 0) {
+                    room = create_room(list, client_fd);
 
-                // Add terminator to invite code
-                char code[8];
-                strncpy(code, room->invite_code, 7);
-                code[7] = 0;
+                    // Add terminator to invite code
+                    char code[8];
+                    strncpy(code, room->invite_code, 7);
+                    code[7] = 0;
 
-                printf("The room '%s' was created by %s\n", code, address);
+                    printf("The room '%s' was created by %s\n", code, address);
+                }
+                error = send_pkg(client_fd, room->invite_code, 7, PKG_CLIENT_CODE);
+                if (!error)
+                    set_timeout(client_fd, INT_MAX);
+                break;
             }
-            if (!send_pkg(client_fd, room->invite_code, 7, PKG_CLIENT_CODE))
-                break;
-        } else if (package_type == PKG_JOIN_ROOM) {
-            char code[7];
-            if (!recv_all(client_fd, &code, 7))
-                break;
-            if (join_room(list, client_fd, code, address)) {
-                if (!send_pkg(client_fd, 0, 0, PKG_CLIENT_JOINED))
+            case PKG_JOIN_ROOM: {
+                char code[7];
+                if ((error = recv_all(client_fd, &code, 7)))
                     break;
+
+                if (join_room(list, client_fd, code, address)) {
+                    if ((error = send_pkg(client_fd, 0, 0, PKG_CLIENT_JOINED)))
+                        break;
+                    set_timeout(client_fd, INT_MAX);
+                    int other_fd = get_other_client_fd(list, client_fd);
+                    if (other_fd != -1)
+                        send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
+                } else {
+                    error = send_pkg(client_fd, 0, 0, PKG_CLIENT_ROOM_NOT_FOUND);
+                }
+                break;
+            }
+            case PKG_MOVE:
+                error = transfer(list, client_fd, 4, PKG_CLIENT_MOVE);
+                break;
+            case PKG_EN_PASSANT:
+                error = transfer(list, client_fd, 2, PKG_CLIENT_EN_PASSANT);
+                break;
+            case PKG_CASTLING:
+                error = transfer(list, client_fd, 1, PKG_CLIENT_CASTLING);
+                break;
+            case PKG_PROMOTION:
+                error = transfer(list, client_fd, 1, PKG_CLIENT_PROMOTION);
+                break;
+            case PKG_STATUS: {
+                uint16_t rooms_count = list->len;
+                uint16_t data = htons(rooms_count);
+                error = send_pkg(client_fd, &data, sizeof(uint16_t), PKG_CLIENT_STATUS);
+                break;
+            }
+            case PKG_CHAT_MSG: {
+                char *message = 0;
+                char next_char;
+                int i = 0;
+                do {
+                    message = (message == 0)
+                              ? malloc_wr(sizeof(char))
+                              : realloc_wr(message, i + sizeof(char));
+
+                    if (recv_all(client_fd, &next_char, sizeof(char))) {
+                        free(message);
+                        goto close_connection;
+                    }
+
+                    message[i] = next_char;
+                    i++;
+                } while (next_char != 0);
+
                 int other_fd = get_other_client_fd(list, client_fd);
                 if (other_fd != -1)
-                    send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
-            } else {
-                if (!send_pkg(client_fd, 0, 0, PKG_CLIENT_ROOM_NOT_FOUND))
-                    break;
+                    send_pkg(other_fd, message, i, PKG_CLIENT_CHAT_MSG);
+
+                free(message);
+                break;
             }
-        } else if (package_type == PKG_MOVE) {
-            if (!transfer(list, client_fd, 4, PKG_CLIENT_MOVE))
-                break;
-        } else if (package_type == PKG_EN_PASSANT) {
-            if (!transfer(list, client_fd, 2, PKG_CLIENT_EN_PASSANT))
-                break;
-        } else if (package_type == PKG_CASTLING) {
-            if (!transfer(list, client_fd, 1, PKG_CLIENT_CASTLING))
-                break;
-        } else if (package_type == PKG_PROMOTION) {
-            if (!transfer(list, client_fd, 1, PKG_CLIENT_PROMOTION))
-                break;
-        } else if (package_type == PKG_STATUS) {
-            int rooms_count = list->len;
-            if (!send_pkg(client_fd, &rooms_count, sizeof(int), PKG_CLIENT_STATUS))
-                break;
-        } else if (package_type == PKG_CHAT_MSG) {
-            char *message = 0;
-            char next_char;
-            int i = 0;
-            do {
-                message = (message == 0)
-                          ? malloc_wr(sizeof(char))
-                          : realloc_wr(message, i + sizeof(char));
-
-                if (!recv_all(client_fd, &next_char, sizeof(char))) {
-                    free(message);
-                    goto close_connection;
-                }
-
-                message[i] = next_char;
-                i++;
-            } while (next_char != 0);
-
-            int other_fd = get_other_client_fd(list, client_fd);
-            if (other_fd != -1)
-                send_pkg(other_fd, message, i, PKG_CLIENT_CHAT_MSG);
-
-            free(message);
-        } else
-            break;
-    }
+            default:
+                error = 0;
+        }
 
     close_connection:
 
