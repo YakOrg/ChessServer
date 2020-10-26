@@ -19,6 +19,10 @@
 
 int check_trim(char **board, char old_x, char old_y, char new_x, char new_y) {
     if (old_x == new_x && old_y == new_y) return 0;
+    if ((board[old_x][old_y] == WHITE_PAWN || board[old_x][old_y] == BLACK_PAWN) &&
+        old_x == new_x &&
+        board[new_x][new_y] != BLANK)
+        return 0;
 
     if (new_y >= old_y && new_x >= old_x) {
         for (char i = old_x; i <= new_x; i++)
@@ -56,7 +60,7 @@ int check_simple_move(char **board, char old_x, char old_y, char new_x, char new
         } else if (board[old_x][old_y] == BLACK_KNIGHT || board[old_x][old_y] == WHITE_KNIGHT) {
             if ((abs(new_x - old_x) == 2 && abs(new_y - old_y) == 1) ||
                 (abs(new_x - old_x) == 1 && abs(new_y - old_y) == 2))
-                return check_trim(board, old_x, old_y, new_x, new_y);
+                return 1;
         } else if (board[old_x][old_y] == BLACK_PAWN || board[old_x][old_y] == WHITE_PAWN) {
             if (board[old_x][old_y] == BLACK_PAWN && old_y == 1) {
                 if (new_y - old_y == 1 || new_y - old_y == 2)
@@ -66,7 +70,6 @@ int check_simple_move(char **board, char old_x, char old_y, char new_x, char new
                     return check_trim(board, old_x, old_y, new_x, new_y);
             } else if (abs(new_y - old_y) == 1)
                 return check_trim(board, old_x, old_y, new_x, new_y);
-
         } else if (board[old_x][old_y] == BLACK_QUEEN || board[old_x][old_y] == WHITE_QUEEN) {
             if ((abs(new_x - old_x) == abs(new_y - old_y)) || ((new_x == old_x) || (new_y == old_y)))
                 return check_trim(board, old_x, old_y, new_x, new_y);

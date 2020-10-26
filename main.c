@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <sodium.h>
 #include "ll.h"
+#include "anticheat.h"
 
 void *malloc_wr(size_t size) {
     void *result = malloc(size);
