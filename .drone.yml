@@ -12,7 +12,7 @@ steps:
     image: pwntools/pwntools
     commands:
       - ./chess-server &
-      - python3 ./tests.py
+      - python ./tests.py
   - name: publish
     image: banzaicloud/drone-kaniko
     settings:
