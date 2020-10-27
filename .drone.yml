@@ -8,6 +8,10 @@ steps:
     commands:
       - cmake -S .
       - make
+  - name: test
+    image: registry.oceancraft.ru/env/pwntools:latest
+    commands:
+      - python3 ./tests.py
   - name: publish
     image: banzaicloud/drone-kaniko
     settings:
