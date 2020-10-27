@@ -22,8 +22,7 @@
 *.tmproj
 .vscode/
 
-*.c
-*.h
+src
 *.txt
 CMakeFiles
 Dockerfile
