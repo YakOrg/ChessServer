@@ -50,19 +50,21 @@ def connect():
     return r
 
 
-def send_code(r, code):
+def send_byte(r, code):
     r.send(bytes([code]))
 
 
 def create_pair():
     host = connect()
-    send_code(host, PKG_CREATE_ROOM)
+    send_byte(host, PKG_CREATE_ROOM)
+    send_byte(host, 1)
     host.recvn(1)
     invite_code = host.recvn(7).decode("ascii")
     client = connect()
-    send_code(client, PKG_JOIN_ROOM)
+    send_byte(client, PKG_JOIN_ROOM)
     client.send(invite_code)
-    client.recvn(1)
+    client.recvn(1)  # PKG TYPE
+    client.recvn(1)  # recv is_white
     host.recvn(1)
     return host, client
 
@@ -71,7 +73,7 @@ class TestServer(unittest.TestCase):
 
     def test_status(self):
         r = connect()
-        send_code(r, PKG_STATUS)
+        send_byte(r, PKG_STATUS)
         self.assertEqual(p_byte(r.recvn(1)), PKG_CLIENT_STATUS)
         count = uint16_to_pint(r.recvn(2))
         self.assertTrue(0 <= count <= 100)
@@ -79,21 +81,23 @@ class TestServer(unittest.TestCase):
 
     def test_room_flow(self):
         host = connect()
-        send_code(host, PKG_CREATE_ROOM)
+        send_byte(host, PKG_CREATE_ROOM)
+        send_byte(host, 1)
         self.assertEqual(p_byte(host.recvn(1)), PKG_CLIENT_CODE)
         invite_code = host.recvn(7).decode("ascii")
         self.assertRegex(invite_code, re.compile('[a-zA-Z0-9]{3}-[a-zA-Z0-9]{3}'))
         client = connect()
-        send_code(client, PKG_JOIN_ROOM)
+        send_byte(client, PKG_JOIN_ROOM)
         client.send(invite_code)
         self.assertEqual(p_byte(client.recvn(1)), PKG_CLIENT_JOINED)
+        self.assertEqual(p_byte(client.recvn(1)), 0)
         self.assertEqual(p_byte(host.recvn(1)), PKG_CLIENT_ROOM_FULL)
         client.close()
         host.close()
 
     def test_move(self):
         host, client = create_pair()
-        send_code(host, PKG_MOVE)
+        send_byte(host, PKG_MOVE)
         host.send(bytes([6, 6, 6, 5]))
         self.assertEqual(p_byte(client.recvn(1)), PKG_CLIENT_MOVE)
         self.assertEqual(str(client.recvn(4)), str(bytes([6, 6, 6, 5])))
@@ -102,7 +106,7 @@ class TestServer(unittest.TestCase):
 
     def test_chat(self):
         host, client = create_pair()
-        send_code(host, PKG_CHAT_MSG)
+        send_byte(host, PKG_CHAT_MSG)
         message = b'Hello, world!\0'
         host.send_raw(message)
         self.assertEqual(p_byte(client.recvn(1)), PKG_CLIENT_CHAT_MSG)

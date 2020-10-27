@@ -17,6 +17,38 @@
 #define WHITE_QUEEN 'Q'
 #define WHITE_ROOK 'R'
 
+char starting_lineup(int i, int j) {
+    if (i == 1) return BLACK_PAWN;
+    else if (i == 6) return WHITE_PAWN;
+    else if (i == 0 && (j == 0 || j == 7)) return BLACK_ROOK;
+    else if (i == 7 && (j == 0 || j == 7)) return WHITE_ROOK;
+    else if (i == 0 && (j == 1 || j == 6)) return BLACK_KNIGHT;
+    else if (i == 7 && (j == 1 || j == 6)) return WHITE_KNIGHT;
+    else if (i == 0 && (j == 2 || j == 5)) return BLACK_BISHOP;
+    else if (i == 7 && (j == 2 || j == 5)) return WHITE_BISHOP;
+    else if (i == 0 && j == 3) return BLACK_QUEEN;
+    else if (i == 7 && j == 3) return WHITE_QUEEN;
+    else if (i == 0 && j == 4) return BLACK_KING;
+    else if (i == 7 && j == 4) return WHITE_KING;
+    return BLANK;
+}
+
+char** create_board() {
+    char** board = malloc(sizeof(char*) * 8);
+    for (int i = 0; i < 8; ++i) {
+        board[i] = malloc(sizeof(char) * 8);
+        for (int j = 0; j < 8; ++j)
+            board[i][j] = starting_lineup(i, j);
+    }
+    return board;
+}
+
+void free_board(char** board) {
+    for (int i = 0; i < 8; ++i)
+        free(board[i]);
+    free(board);
+}
+
 int check_trim(char **board, char old_x, char old_y, char new_x, char new_y) {
     if (old_x == new_x && old_y == new_y) return 0;
     if ((board[old_x][old_y] == WHITE_PAWN || board[old_x][old_y] == BLACK_PAWN) &&

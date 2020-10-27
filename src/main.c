@@ -45,10 +45,29 @@ char *gen_invite_code() {
     return str;
 }
 
-typedef struct Room {
-    int *clients;
-    char *invite_code;
-} Room;
+typedef struct message {
+    char *text;
+    char from_white;
+} message;
+
+void free_message(void *data) {
+    message *message = data;
+    free(message->text);
+    free(message);
+}
+
+typedef struct log_line {
+    char *text;
+    struct log_line *next;
+} log_line;
+
+typedef struct room {
+    int clients[2];
+    char invite_code[7];
+    char **board;
+    ll_t *messages;
+    log_line *logs;
+} room;
 
 int send_all(int sock_fd, void *data, int len) {
     unsigned char *data_ptr = (unsigned char *) data;
@@ -86,57 +105,71 @@ int recv_all(int sock_fd, void *data, int len) {
     return 0;
 }
 
-Room *create_room(ll_t *list, int client1_fd) {
-    Room *new_room = malloc_wr(sizeof(struct Room));
-    new_room->clients = malloc_wr(sizeof(int) * 2);
-    new_room->clients[0] = client1_fd;
-    new_room->clients[1] = -1;
+room *create_room(ll_t *list, int client1_fd, char is_white) {
+    room *new_room = malloc_wr(sizeof(struct room));
+    new_room->clients[0] = is_white ? client1_fd : -1;
+    new_room->clients[1] = is_white ? -1 : client1_fd;
 
     char *code = gen_invite_code();
-    new_room->invite_code = code;
+    strncpy(new_room->invite_code, code, 7);
+    free(code);
+
+    new_room->board = create_board();
+    new_room->messages = ll_new(free_message);
+    new_room->logs = 0;
 
     ll_insert_last(list, new_room);
     return new_room;
 }
 
 int search_by_invite_code(void *data, void *args) {
-    Room *room = data;
+    room *room = data;
     char *code = args;
     return !strncmp(room->invite_code, code, 7);
 }
 
 
 int search_by_client_fd(void *data, void *args) {
-    Room *room = data;
+    room *room = data;
     int fd = *((int *) args);
     return room->clients[0] == fd || room->clients[1] == fd;
 }
 
 int get_other_client_fd(ll_t *list, int client_fd) {
-    Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
-    if (room != NULL)
+    room *room = ll_get_search(list, search_by_client_fd, &client_fd);
+    if (room != 0)
         return room->clients[0] == client_fd ? room->clients[1] : room->clients[0];
 
     return -1;
 }
 
-int join_room(ll_t *list, int client_fd, char *code, char *address) {
-    Room *room = ll_get_search(list, search_by_invite_code, code);
-    if (room != NULL)
+room* join_room(ll_t *list, int client_fd, char *code, char *address) {
+    room *room = ll_get_search(list, search_by_invite_code, code);
+    if (room != 0)
         for (int i = 0; i < 2; ++i) {
             if (room->clients[i] == -1) {
                 room->clients[i] = client_fd;
                 printf("Client %s joined to room '%s'\n", address, code);
-                return 1;
+                return room;
             }
         }
     return 0;
 }
 
+void free_logs(log_line *head) {
+    log_line *current;
+    while ((current = head) != 0) {
+        head = head->next;
+        free(current->text);
+        free(current);
+    }
+}
+
 void free_room(void *memory) {
-    Room *room = memory;
-    free(room->clients);
-    free(room->invite_code);
+    room *room = memory;
+    ll_delete(room->messages);
+    free_board(room->board);
+    free_logs(room->logs);
     free(room);
 }
 
@@ -146,7 +179,7 @@ typedef struct Process_args {
     char *address;
 } Process_args;
 
-int is_room_offline(Room *room) {
+int is_room_offline(room *room) {
     int offline_clients = 0;
     for (int i = 0; i < 2; ++i)
         if (room->clients[i] == -1)
@@ -226,12 +259,16 @@ void *process_client(void *arg) {
 
     int error = 0;
     unsigned char package_type;
-    while (!error && !recv_all(client_fd, &package_type, sizeof(char)))
+    while (!error && !recv_all(client_fd, &package_type, 1))
         switch (package_type) {
             case PKG_CREATE_ROOM: {
-                Room *room = ll_get_search(list, search_by_client_fd, &client_fd);
+                room *room = ll_get_search(list, search_by_client_fd, &client_fd);
                 if (room == 0) {
-                    room = create_room(list, client_fd);
+                    char is_white;
+                    if ((error = recv_all(client_fd, &is_white, 1)))
+                        break;
+
+                    room = create_room(list, client_fd, is_white);
 
                     // Add terminator to invite code
                     char code[8];
@@ -250,8 +287,10 @@ void *process_client(void *arg) {
                 if ((error = recv_all(client_fd, &code, 7)))
                     break;
 
-                if (join_room(list, client_fd, code, address)) {
-                    if ((error = send_pkg(client_fd, 0, 0, PKG_CLIENT_JOINED)))
+                room* room;
+                if ((room = join_room(list, client_fd, code, address)) != 0) {
+                    char is_white = (char) (room->clients[0] == client_fd);
+                    if ((error = send_pkg(client_fd, &is_white, 1, PKG_CLIENT_JOINED)))
                         break;
                     set_timeout(client_fd, INT_MAX);
                     int other_fd = get_other_client_fd(list, client_fd);
@@ -315,7 +354,7 @@ void *process_client(void *arg) {
     printf("Closed %s\n", address);
     free(address);
 
-    Room *room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
+    room *room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
 
     if (room_to_close != 0) {
         char invite_code[7];
