@@ -33,8 +33,8 @@ char starting_lineup(int i, int j) {
     return BLANK;
 }
 
-char** create_board() {
-    char** board = malloc(sizeof(char*) * 8);
+char **create_board() {
+    char **board = malloc(sizeof(char *) * 8);
     for (int i = 0; i < 8; ++i) {
         board[i] = malloc(sizeof(char) * 8);
         for (int j = 0; j < 8; ++j)
@@ -43,10 +43,28 @@ char** create_board() {
     return board;
 }
 
-void free_board(char** board) {
+void free_board(char **board) {
     for (int i = 0; i < 8; ++i)
         free(board[i]);
     free(board);
+}
+
+int transform_board_with_move(char **board, char *white_turn, char x_old, char y_old, char x_new, char y_new,
+                              char *old_pawn_x, char *old_pawn_y) {
+    return 0;
+}
+
+int transform_board_with_castling(char **board, char *white_turn, char long_castling) {
+    return 0;
+}
+
+int
+transform_board_with_en_passant(char **board, char *white_turn, char x, char y, char *old_pawn_x, char *old_pawn_y) {
+    return 0;
+}
+
+int transform_board_with_promotion(char **board, char *white_turn, char old_x, char new_x, char new_type) {
+    return 0;
 }
 
 int check_trim(char **board, char old_x, char old_y, char new_x, char new_y) {

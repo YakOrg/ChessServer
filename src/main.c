@@ -67,6 +67,9 @@ typedef struct room {
     char **board;
     ll_t *messages;
     log_line *logs;
+    char white_turn;
+    char old_pawn_x;
+    char old_pawn_y;
 } room;
 
 int send_all(int sock_fd, void *data, int len) {
@@ -117,6 +120,9 @@ room *create_room(ll_t *list, int client1_fd, char is_white) {
     new_room->board = create_board();
     new_room->messages = ll_new(free_message);
     new_room->logs = 0;
+    new_room->white_turn = 1;
+    new_room->old_pawn_x = -1;
+    new_room->old_pawn_y = -1;
 
     ll_insert_last(list, new_room);
     return new_room;
@@ -135,15 +141,19 @@ int search_by_client_fd(void *data, void *args) {
     return room->clients[0] == fd || room->clients[1] == fd;
 }
 
+room *find_room_by_sock_fd(ll_t *list, int client_fd) {
+    return ll_get_search(list, search_by_client_fd, &client_fd);
+}
+
 int get_other_client_fd(ll_t *list, int client_fd) {
-    room *room = ll_get_search(list, search_by_client_fd, &client_fd);
+    room *room = find_room_by_sock_fd(list, client_fd);
     if (room != 0)
         return room->clients[0] == client_fd ? room->clients[1] : room->clients[0];
 
     return -1;
 }
 
-room* join_room(ll_t *list, int client_fd, char *code, char *address) {
+room *join_room(ll_t *list, int client_fd, char *code, char *address) {
     room *room = ll_get_search(list, search_by_invite_code, code);
     if (room != 0)
         for (int i = 0; i < 2; ++i) {
@@ -231,7 +241,7 @@ void *process_client(void *arg) {
 
     Process_args *process_args = arg;
     int client_fd = process_args->sock_fd;
-    ll_t *list = process_args->list;
+    ll_t *rooms = process_args->list;
     char *address = process_args->address;
     free(process_args);
 
@@ -262,13 +272,13 @@ void *process_client(void *arg) {
     while (!error && !recv_all(client_fd, &package_type, 1))
         switch (package_type) {
             case PKG_CREATE_ROOM: {
-                room *room = ll_get_search(list, search_by_client_fd, &client_fd);
+                room *room = ll_get_search(rooms, search_by_client_fd, &client_fd);
                 if (room == 0) {
                     char is_white;
                     if ((error = recv_all(client_fd, &is_white, 1)))
                         break;
 
-                    room = create_room(list, client_fd, is_white);
+                    room = create_room(rooms, client_fd, is_white);
 
                     // Add terminator to invite code
                     char code[8];
@@ -287,13 +297,13 @@ void *process_client(void *arg) {
                 if ((error = recv_all(client_fd, &code, 7)))
                     break;
 
-                room* room;
-                if ((room = join_room(list, client_fd, code, address)) != 0) {
+                room *room;
+                if ((room = join_room(rooms, client_fd, code, address)) != 0) {
                     char is_white = (char) (room->clients[0] == client_fd);
                     if ((error = send_pkg(client_fd, &is_white, 1, PKG_CLIENT_JOINED)))
                         break;
                     set_timeout(client_fd, INT_MAX);
-                    int other_fd = get_other_client_fd(list, client_fd);
+                    int other_fd = get_other_client_fd(rooms, client_fd);
                     if (other_fd != -1)
                         send_pkg(other_fd, 0, 0, PKG_CLIENT_ROOM_FULL);
                 } else {
@@ -301,20 +311,45 @@ void *process_client(void *arg) {
                 }
                 break;
             }
-            case PKG_MOVE:
-                error = transfer(list, client_fd, 4, PKG_CLIENT_MOVE);
+            case PKG_MOVE: {
+                char move[4];
+                if ((error = recv_all(client_fd, &move, 4)))
+                    break;
+
+                room *room = find_room_by_sock_fd(rooms, client_fd);
+                if (room != 0) {
+                    int error_move = transform_board_with_move(
+                            room->board,
+                            &room->white_turn,
+                            move[0],
+                            move[1],
+                            move[2],
+                            move[3],
+                            &room->old_pawn_x,
+                            &room->old_pawn_y
+                    );
+                    if (error_move)
+                        error = 1;
+                    else {
+                        int other_fd = get_other_client_fd(rooms, client_fd);
+                        if (other_fd != -1)
+                            send_pkg(other_fd, move, 4, PKG_CLIENT_MOVE);
+                    }
+                } else
+                    error = 1;
                 break;
+            }
             case PKG_EN_PASSANT:
-                error = transfer(list, client_fd, 2, PKG_CLIENT_EN_PASSANT);
+                error = transfer(rooms, client_fd, 2, PKG_CLIENT_EN_PASSANT);
                 break;
             case PKG_CASTLING:
-                error = transfer(list, client_fd, 1, PKG_CLIENT_CASTLING);
+                error = transfer(rooms, client_fd, 1, PKG_CLIENT_CASTLING);
                 break;
             case PKG_PROMOTION:
-                error = transfer(list, client_fd, 1, PKG_CLIENT_PROMOTION);
+                error = transfer(rooms, client_fd, 3, PKG_CLIENT_PROMOTION);
                 break;
             case PKG_STATUS: {
-                uint16_t rooms_count = list->len;
+                uint16_t rooms_count = rooms->len;
                 uint16_t data = htons(rooms_count);
                 error = send_pkg(client_fd, &data, sizeof(uint16_t), PKG_CLIENT_STATUS);
                 break;
@@ -337,7 +372,7 @@ void *process_client(void *arg) {
                     i++;
                 } while (next_char != 0);
 
-                int other_fd = get_other_client_fd(list, client_fd);
+                int other_fd = get_other_client_fd(rooms, client_fd);
                 if (other_fd != -1)
                     send_pkg(other_fd, message, i, PKG_CLIENT_CHAT_MSG);
 
@@ -354,7 +389,7 @@ void *process_client(void *arg) {
     printf("Closed %s\n", address);
     free(address);
 
-    room *room_to_close = ll_get_search(list, search_by_client_fd, &client_fd);
+    room *room_to_close = ll_get_search(rooms, search_by_client_fd, &client_fd);
 
     if (room_to_close != 0) {
         char invite_code[7];
@@ -367,9 +402,9 @@ void *process_client(void *arg) {
         // Wait for reconnection
         sleep(5);
 
-        room_to_close = ll_get_search(list, search_by_invite_code, invite_code);
+        room_to_close = ll_get_search(rooms, search_by_invite_code, invite_code);
         if (room_to_close != 0 && is_room_offline(room_to_close)) {
-            ll_remove_search(list, search_by_invite_code, invite_code);
+            ll_remove_search(rooms, search_by_invite_code, invite_code);
             printf("The room '%s' was removed\n", invite_code);
         }
     }
