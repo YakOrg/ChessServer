@@ -17,6 +17,8 @@
 #define WHITE_QUEEN 'Q'
 #define WHITE_ROOK 'R'
 
+int check_simple_move(char **board, char old_x, char old_y, char new_x, char new_y);
+
 char starting_lineup(int i, int j) {
     if (i == 1) return BLACK_PAWN;
     else if (i == 6) return WHITE_PAWN;
@@ -31,6 +33,16 @@ char starting_lineup(int i, int j) {
     else if (i == 0 && j == 4) return BLACK_KING;
     else if (i == 7 && j == 4) return WHITE_KING;
     return BLANK;
+}
+
+//TODO:
+int get_movements(char **board, char old_x, char old_y) {
+    return 0;//return List;
+}
+
+//TODO:
+int is_check(char **board) {
+    return 0;
 }
 
 char **create_board() {
@@ -51,19 +63,98 @@ void free_board(char **board) {
 
 int transform_board_with_move(char **board, char *white_turn, char x_old, char y_old, char x_new, char y_new,
                               char *old_pawn_x, char *old_pawn_y) {
+    if (check_simple_move(board, x_old, y_old, x_new, y_new)) {
+        if (white_turn) {
+            if (y_old == 6 && abs(y_old - y_new) == 2 && board[x_old][y_old] == WHITE_PAWN) {
+                *old_pawn_x = x_new;
+                *old_pawn_y = y_new;
+            }
+        } else {
+            if (y_old == 1 && abs(y_old - y_new) == 2 && board[x_old][y_old] == BLACK_PAWN) {
+                *old_pawn_x = x_new;
+                *old_pawn_y = y_new;
+            }
+        }
+        if (is_check(board)) {
+            char figure = board[x_new][y_new];
+            board[x_new][y_new] = board[x_old][y_old];
+            board[x_old][y_old] = BLANK;
+            if (is_check(board)) {
+                board[x_old][y_old] = board[x_new][y_new];
+                board[x_new][y_new] = figure;
+                return 1;
+            }
+        } else {
+            board[x_new][y_new] = board[x_old][y_old];
+            board[x_old][y_old] = BLANK;
+        }
+    } else return 1;
+    *white_turn = (char) !white_turn;
     return 0;
 }
 
 int transform_board_with_castling(char **board, char *white_turn, char long_castling) {
+    if (is_check(board)) return 1;
+    if (white_turn) {
+        if (long_castling) {
+            if (board[7][1] == BLANK && board[7][2] == BLANK && board[7][3] == BLANK) {
+                board[7][2] = WHITE_KING;
+                board[7][4] = BLANK;
+                board[7][0] = BLANK;
+                board[7][3] = WHITE_ROOK;
+            } else return 1;
+        } else {
+            if (board[7][5] == BLANK && board[7][6] == BLANK) {
+                board[7][6] = WHITE_KING;
+                board[7][4] = BLANK;
+                board[7][7] = BLANK;
+                board[7][5] = WHITE_ROOK;
+            } else return 1;
+        }
+    } else {
+        if (long_castling) {
+            if (board[0][1] == BLANK && board[0][2] == BLANK && board[0][3] == BLANK) {
+                board[0][2] = WHITE_KING;
+                board[0][4] = BLANK;
+                board[0][0] = BLANK;
+                board[0][3] = WHITE_ROOK;
+            } else return 1;
+        } else {
+            if (board[0][5] == BLANK && board[0][6] == BLANK) {
+                board[0][6] = WHITE_KING;
+                board[0][4] = BLANK;
+                board[0][7] = BLANK;
+                board[0][5] = WHITE_ROOK;
+            } else return 1;
+        }
+    }
+    *white_turn = (char) !white_turn;
     return 0;
 }
 
-int
-transform_board_with_en_passant(char **board, char *white_turn, char x, char y, char *old_pawn_x, char *old_pawn_y) {
+int transform_board_with_en_passant(char **board, char *white_turn, char old_x, char old_y,
+                                    char *old_pawn_x, char *old_pawn_y) {
+    char new_y = *(white_turn ? old_pawn_y - 1 : old_pawn_y + 1);
+    if (*old_pawn_x != -1 && *old_pawn_y != -1 &&
+        check_simple_move(board, old_x, old_y, *old_pawn_x, new_y)) {
+        board[*old_pawn_x][*old_pawn_y] = BLANK;
+        board[*old_pawn_x][new_y] = board[old_x][old_y];
+        board[old_x][old_y] = BLANK;
+        *old_pawn_x = -1;
+        *old_pawn_y = -1;
+    } else return 1;
+    *white_turn = (char) !white_turn;
     return 0;
 }
 
 int transform_board_with_promotion(char **board, char *white_turn, char old_x, char new_x, char new_type) {
+    char old_y = white_turn ? 1 : 6;
+    char new_y = white_turn ? 0 : 7;
+    if (check_simple_move(board, old_x, old_y, new_x, new_y)) {
+        board[old_x][old_y] = BLANK;
+        board[new_x][new_y] = new_type;
+    } else return 1;
+    *white_turn = (char) !white_turn;
     return 0;
 }
 

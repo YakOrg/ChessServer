@@ -15,7 +15,8 @@ int transform_board_with_move(
 
 int transform_board_with_castling(char **board, char *white_turn, char long_castling);
 
-int transform_board_with_en_passant(char **board, char *white_turn, char x, char y, char *old_pawn_x, char *old_pawn_y);
+int transform_board_with_en_passant(char **board, char *white_turn, char old_x, char old_y, char *old_pawn_x,
+                                    char *old_pawn_y);
 
 int transform_board_with_promotion(char **board, char *white_turn, char old_x, char new_x, char new_type);
 
