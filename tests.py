@@ -69,7 +69,47 @@ def create_pair():
     return host, client
 
 
+class Game(object):
+    def __init__(self):
+        (self.white, self.black) = create_pair()
+        self.white_move = True
+
+    def get_current_dst(self):
+        if self.white_move:
+            return self.white
+        else:
+            return self.black
+
+    def make_move(self, move_type, move, recv=True):
+        move = bytes(move)
+        dst = self.get_current_dst()
+        send_byte(dst, move_type)
+        dst.send(move)
+        self.white_move = not self.white_move
+        if recv:
+            dst = self.get_current_dst()
+            dst.recvn(1)
+            dst.recvn(len(move))
+
+    def close(self):
+        self.black.close()
+        self.white.close()
+
+
 class TestServer(unittest.TestCase):
+
+    def anti_cheat_test(self, game, move_type, pos, should_recv):
+        game.make_move(move_type, pos, False)
+        player = game.get_current_dst()
+        if len(player.recvn(1, timeout=0.1)) == 0:
+            if should_recv:
+                self.fail("Anticheat not works, valid packet banned")
+        else:
+            if not should_recv:
+                self.fail("Anticheat not works, cheat packet passed")
+            else:
+                self.assertEqual(bytes(pos), player.recvn(4, timeout=2))
+        game.close()
 
     def test_status(self):
         r = connect()
@@ -113,6 +153,38 @@ class TestServer(unittest.TestCase):
         self.assertEqual(client.recvuntil('\0'), message)
         client.close()
         host.close()
+
+    #
+    #       0   1   2   3   4   5   6   7
+    #   0   r   n   b   q   k   b   n   r
+    #   1   p   p   p   p   p   p   p   p
+    #   2
+    #   3
+    #   4
+    #   5
+    #   6   P   P   P   P   P   P   P   P
+    #   7   R   N   B   Q   K   B   N   R
+
+    def test_king_jump(self):
+        self.anti_cheat_test(Game(), PKG_MOVE, [4, 7, 3, 0], should_recv=False)
+
+    def test_pawn_jump(self):
+        self.anti_cheat_test(Game(), PKG_MOVE, [6, 6, 0, 5], should_recv=False)
+
+    def test_pawn_jump2(self):
+        self.anti_cheat_test(Game(), PKG_MOVE, [6, 6, 5, 5], should_recv=False)
+
+    def test_complicated_pos(self):
+        game = Game()
+        game.make_move(PKG_MOVE, [3, 6, 3, 4])
+        game.make_move(PKG_MOVE, [4, 1, 4, 3])
+        self.anti_cheat_test(game, PKG_MOVE, [3, 4, 4, 3], should_recv=True)
+
+    # def test_ddos(self):
+    #    for i in range(0, 10000000):
+    #        host, client = create_pair()
+    #        host.close()
+    #        client.close()
 
 
 if __name__ == '__main__':

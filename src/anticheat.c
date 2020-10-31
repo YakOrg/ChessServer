@@ -1,5 +1,6 @@
 #include "anticheat.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 #define BLACK_BISHOP 'b'
 #define BLACK_KING 'k'
@@ -17,9 +18,17 @@
 #define WHITE_QUEEN 'Q'
 #define WHITE_ROOK 'R'
 
+void print_board(char** board) {
+    for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j)
+            printf("%c ", board[j][i]);
+        printf("\n");
+    }
+}
+
 int check_simple_move(char **board, char old_x, char old_y, char new_x, char new_y);
 
-char starting_lineup(int i, int j) {
+char starting_lineup(int j, int i) {
     if (i == 1) return BLACK_PAWN;
     else if (i == 6) return WHITE_PAWN;
     else if (i == 0 && (j == 0 || j == 7)) return BLACK_ROOK;
@@ -63,6 +72,7 @@ void free_board(char **board) {
 
 int transform_board_with_move(char **board, char *white_turn, char x_old, char y_old, char x_new, char y_new,
                               char *old_pawn_x, char *old_pawn_y) {
+    print_board(board);
     if (check_simple_move(board, x_old, y_old, x_new, y_new)) {
         if (white_turn) {
             if (y_old == 6 && abs(y_old - y_new) == 2 && board[x_old][y_old] == WHITE_PAWN) {
@@ -89,7 +99,9 @@ int transform_board_with_move(char **board, char *white_turn, char x_old, char y
             board[x_old][y_old] = BLANK;
         }
     } else return 1;
-    *white_turn = (char) !white_turn;
+    *white_turn = (char) !(*white_turn);
+
+    print_board(board);
     return 0;
 }
 
@@ -196,7 +208,7 @@ int check_simple_move(char **board, char old_x, char old_y, char new_x, char new
             if (abs(new_x - old_x) == abs(new_y - old_y))
                 return check_trim(board, old_x, old_y, new_x, new_y);
         } else if (board[old_x][old_y] == BLACK_KING || board[old_x][old_y] == WHITE_KING) {
-            if (abs(new_x - old_x) == 1 || abs(new_y - old_y) == 1)
+            if (abs(new_x - old_x) <= 1 && abs(new_y - old_y) <= 1)
                 return check_trim(board, old_x, old_y, new_x, new_y);
         } else if (board[old_x][old_y] == BLACK_KNIGHT || board[old_x][old_y] == WHITE_KNIGHT) {
             if ((abs(new_x - old_x) == 2 && abs(new_y - old_y) == 1) ||
