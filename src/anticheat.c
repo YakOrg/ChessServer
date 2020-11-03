@@ -18,7 +18,14 @@
 #define WHITE_QUEEN 'Q'
 #define WHITE_ROOK 'R'
 
-void print_board(char** board) {
+
+typedef struct position {
+    char x;
+    char y;
+    struct position *next;
+} position;
+
+void print_board(char **board) {
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 8; ++j)
             printf("%c ", board[j][i]);
@@ -44,9 +51,87 @@ char starting_lineup(int j, int i) {
     return BLANK;
 }
 
-//TODO:
-int get_movements(char **board, char old_x, char old_y) {
-    return 0;//return List;
+position *append(position *moves, char x, char y) {
+    if (!moves) {
+        moves = malloc(sizeof(position));
+    } else {
+        moves->next = malloc(sizeof(position));
+        moves = moves->next;
+    }
+    moves->x = x;
+    moves->y = y;
+    moves->next = 0;
+    return moves;
+}
+
+void free_positions(position *head) {
+    position *cur;
+    while ((cur = head)) {
+        head = head->next;
+        free(cur);
+    }
+}
+
+position *get_movements(char old_x, char old_y, char new_x, char new_y) {
+    position *moves = 0;
+    position *head = 0;
+    int on_right = old_x < new_x;
+    int main_diagonal = old_x == old_y;
+    int is_down = old_y < new_y;
+    if (old_x == new_x) {
+        if (is_down) {
+            for (; old_y >= new_y; old_y++) {
+                moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            }
+        } else {
+            for (; old_y <= new_y; old_y--) {
+                moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            }
+        }
+    } else if (old_y == new_y) {
+        if (on_right) {
+            for (; old_x >= new_x; old_x++) {
+                moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            }
+        } else {
+            for (; old_x <= new_x; old_x--) {
+                moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            }
+        }
+    } else {
+        if (main_diagonal) {
+            if (on_right) {
+                for (; old_x >= new_x && old_y >= new_y; old_x++, old_y++)
+                    moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            } else {
+                for (; old_x <= new_x && old_y <= new_y; old_x--, old_y--)
+                    moves = append(moves, old_x, old_y);
+                if (!head)
+                    head = moves;
+            }
+        } else if (on_right) {
+            for (; old_x >= new_x && old_y <= new_y; old_x++, old_y--)
+                moves = append(moves, old_x, old_y);
+            if (!head)
+                head = moves;
+        } else {
+            for (; old_x <= new_x && old_y >= new_y; old_x--, old_y++)
+                moves = append(moves, old_x, old_y);
+            if (!head)
+                head = moves;
+        }
+    }
+    return head;
 }
 
 //TODO:
@@ -176,24 +261,16 @@ int check_trim(char **board, char old_x, char old_y, char new_x, char new_y) {
         old_x == new_x &&
         board[new_x][new_y] != BLANK)
         return 0;
-
-    if (new_y >= old_y && new_x >= old_x) {
-        for (char i = old_x; i <= new_x; i++)
-            for (char j = old_y; j <= new_y; j++)
-                if (old_x != new_x && old_y != new_y && board[old_x][old_x] != BLANK) return 0;
-    } else if (new_y >= old_y && new_x <= old_x) {
-        for (char i = old_x; i >= new_x; i--)
-            for (char j = old_y; j <= new_y; j++)
-                if (old_x != new_x && old_y != new_y && board[old_x][old_x] != BLANK) return 0;
-    } else if (new_y <= old_y && new_x >= old_x) {
-        for (char i = old_x; i <= new_x; i++)
-            for (char j = old_y; j >= new_y; j--)
-                if (old_x != new_x && old_y != new_y && board[old_x][old_x] != BLANK) return 0;
-    } else if (new_y <= old_y && new_x <= old_x) {
-        for (char i = old_x; i >= new_x; i--)
-            for (char j = old_y; j >= new_y; j--)
-                if (old_x != new_x && old_y != new_y && board[old_x][old_x] != BLANK) return 0;
+    if ((board[old_x][old_y] == WHITE_PAWN || board[old_x][old_y] == BLACK_PAWN) &&
+        abs(old_x - new_x) == 1 &&
+        board[new_x][new_y] == BLANK)
+        return 0;
+    position *moves = get_movements(old_x, old_y, new_x, new_y);
+    for (position *pos = moves; pos; pos = pos->next) {
+        if (pos->x != new_x && pos->y != new_y && board[pos->x][pos->y] != BLANK)
+            return 0;
     }
+    free_positions(moves);
     return 1;
 }
 
@@ -216,11 +293,13 @@ int check_simple_move(char **board, char old_x, char old_y, char new_x, char new
                 return 1;
         } else if (board[old_x][old_y] == BLACK_PAWN || board[old_x][old_y] == WHITE_PAWN) {
             if (board[old_x][old_y] == BLACK_PAWN && old_y == 1) {
-                if (new_y - old_y == 1 || new_y - old_y == 2)
-                    return check_trim(board, old_x, old_y, new_x, new_y);
+                if (abs(new_x - old_x) <= 1)
+                    if (new_y - old_y == 1 || new_y - old_y == 2)
+                        return check_trim(board, old_x, old_y, new_x, new_y);
             } else if (board[old_x][old_y] == WHITE_PAWN && old_y == 6) {
-                if (old_y - new_y == 1 || old_y - new_y == 2)
-                    return check_trim(board, old_x, old_y, new_x, new_y);
+                if (abs(new_x - old_x) <= 1)
+                    if (old_y - new_y == 1 || old_y - new_y == 2)
+                        return check_trim(board, old_x, old_y, new_x, new_y);
             } else if (abs(new_y - old_y) == 1)
                 return check_trim(board, old_x, old_y, new_x, new_y);
         } else if (board[old_x][old_y] == BLACK_QUEEN || board[old_x][old_y] == WHITE_QUEEN) {
