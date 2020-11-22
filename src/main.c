@@ -1,3 +1,6 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++, C#, and Java: http://www.viva64.com
+
 #include <signal.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -93,7 +96,8 @@ int send_pkg(int sock_fd, void *body, int body_size, unsigned char id) {
     size_t package_size = sizeof(char) + body_size;
     char package[package_size];
     memcpy(package, &id, sizeof(char));
-    memcpy(package + sizeof(char), body, body_size);
+    if (body != 0 && body_size != 0)
+        memcpy(package + sizeof(char), body, body_size);
     return send_all(sock_fd, package, package_size);
 }
 
