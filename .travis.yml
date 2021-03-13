@@ -1,3 +1,5 @@
+sudo: false
+
 addons:
   sonarcloud:
     organization: "yakorg"
