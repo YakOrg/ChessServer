@@ -11,7 +11,6 @@
 #include <limits.h>
 #include <sodium.h>
 #include "ll.h"
-#include "anticheat.h"
 
 #define PORT 8081
 
@@ -52,7 +51,7 @@ char *gen_invite_code() {
 
 typedef struct message {
     char *text;
-    char from_white;
+    //char from_white;
 } message;
 
 void free_message(void *data) {
@@ -69,12 +68,12 @@ typedef struct log_line {
 typedef struct room {
     int clients[2];
     char invite_code[7];
-    char **board;
+    /*char **board;*/
     ll_t *messages;
     log_line *logs;
-    char white_turn;
+    /*char white_turn;
     char old_pawn_x;
-    char old_pawn_y;
+    char old_pawn_y;*/
 } room;
 
 int send_all(int sock_fd, void *data, int len) {
@@ -123,12 +122,12 @@ room *create_room(ll_t *list, int client1_fd, char is_white) {
     strncpy(new_room->invite_code, code, 7);
     free(code);
 
-    new_room->board = create_board();
+    //new_room->board = create_board();
     new_room->messages = ll_new(free_message);
     new_room->logs = 0;
-    new_room->white_turn = 1;
+    /*new_room->white_turn = 1;
     new_room->old_pawn_x = -1;
-    new_room->old_pawn_y = -1;
+    new_room->old_pawn_y = -1;*/
 
     ll_insert_last(list, new_room);
     return new_room;
@@ -184,7 +183,7 @@ void free_logs(log_line *head) {
 void free_room(void *memory) {
     room *room = memory;
     ll_delete(room->messages);
-    free_board(room->board);
+    //free_board(room->board);
     free_logs(room->logs);
     free(room);
 }
@@ -324,23 +323,23 @@ void *process_client(void *arg) {
 
                 room *room = find_room_by_sock_fd(rooms, client_fd);
                 if (room != 0) {
-                    int error_move = transform_board_with_move(
-                            room->board,
-                            &room->white_turn,
-                            move[0],
-                            move[1],
-                            move[2],
-                            move[3],
-                            &room->old_pawn_x,
-                            &room->old_pawn_y
-                    );
-                    if (error_move)
-                        error = 1;
-                    else {
-                        int other_fd = get_other_client_fd(rooms, client_fd);
-                        if (other_fd != -1)
-                            send_pkg(other_fd, move, 4, PKG_CLIENT_MOVE);
-                    }
+                    /* int error_move = transform_board_with_move(
+                             room->board,
+                             &room->white_turn,
+                             move[0],
+                             move[1],
+                             move[2],
+                             move[3],
+                             &room->old_pawn_x,
+                             &room->old_pawn_y
+                     );
+                     if (error_move)
+                         error = 1;
+                     else {*/
+                    int other_fd = get_other_client_fd(rooms, client_fd);
+                    if (other_fd != -1)
+                        send_pkg(other_fd, move, 4, PKG_CLIENT_MOVE);
+                    //}
                 } else
                     error = 1;
                 break;
