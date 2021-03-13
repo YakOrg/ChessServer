@@ -7,6 +7,11 @@ addons:
       secure: CY5J9HW3EB1WCL/wsHGHFHuYYuBQHjBfYj/rxChkV25R4+d0vPryuYWmcnH86W4GBjpiA8jdWPVNGMOO3nNioLBjIdOGeMS1cWm5/zVTiUGRNlZvXaszRSBe2+Quc2KQjF1ysprejA6qB4l3FxFPNEsXafkHVl2b6bv3fmBXljFQcf3Za85wkYklFv3+b9q8xDjFz93das2kWFJfeJGbnFKse4XDlhjv16TrEjx3vQGY+qVmaJGEpBfCQngQNTvRCjEFo/rVxIdf9LIjQ+4bHWjxSrqaFQ1MyrYmklCOpr9NJ2RVC9/VvHrNftVy4harZdcr2AWAZQQlXKnUk1XMCHAHXelw5ubezsU+sdjyXJoi1tt/8ojCfegy3OE/1/NlkxGXOy8wBO5M35gTJR30GtBlzEQHWz+iATRhMWBrDSPOIaNxJGfHhnma9fMVm4uJZoNjB/098HVesPs3MW+7ckeg+nOtQMHWxehEmpIxYoRg4BEWF5CwOPQYmRDkW+bEJQ/FbuIIYeH7c4Fqpc5MUEbAmzqgd2qkctQERGe6EbPBOZZ4TSTPgl6IN/VY5BHuj5bsWvoniktsFvsQHl41Lb0BNXELAyHoWGYtyCn9YTVJqpl4i1tqRqHEX4GAzJVueBtPeDQ5pIeD1euJzhEma/dy4mqK8OmdKEmHD8StylM=
 
 script:
+  - wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable.tar.gz
+  - tar xvf libsodium-1.0.18-stable.tar.gz
+  - ./configure
+  - make && make check
+  - sudo make install
   - mkdir build
   - cd build
   - cmake ..
