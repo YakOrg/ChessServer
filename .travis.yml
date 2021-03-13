@@ -9,9 +9,11 @@ addons:
 script:
   - wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable.tar.gz
   - tar xvf libsodium-1.0.18-stable.tar.gz
+  - cd libsodium-stable
   - ./configure
   - make && make check
   - sudo make install
+  - cd ..
   - mkdir build
   - cd build
   - cmake ..
