@@ -2,8 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "chess-server.fullname" . }}
-  labels:
-    {{- include "chess-server.labels" . | nindent 4 }}
+  labels: {{- include "chess-server.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:

@@ -1,5 +1,5 @@
 image:
-  repository: registry.oceancraft.ru/k8s/chess-server
+  repository: registry.typex.one/k8s/chess-server
   tag: latest
   pullPolicy: Always
 

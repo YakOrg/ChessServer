@@ -4,16 +4,16 @@ name: default
 
 steps:
   - name: build
-    image: registry.oceancraft.ru/env/c-build-env:60b422250d2a91f86b604e615bdff165bbafbbbe
+    image: registry.typex.one/env/chess-build-env:v1.0
     commands:
       - cmake -S .
       - make
   - name: test
-    image: registry.oceancraft.ru/env/pwntools:latest
+    image: registry.typex.one/env/pwntools:v1.0
     commands:
       - python3 ./tests.py
   - name: publish
-    image: banzaicloud/drone-kaniko
+    image: registry.typex.one/env/kaniko:v1.5.1
     settings:
       registry: registry.oceancraft.ru
       repo: k8s/chess-server
@@ -28,10 +28,8 @@ steps:
       branch:
         - master
   - name: deploy
-    image: registry.oceancraft.ru/env/tillerless-helm:v.1.5
+    image: registry.typex.one/env/helm:3.4.1f
     environment:
-      HELM_TILLER_SILENT: true
-      HELM_TILLER_LOGS: false
       KUBECONFIG: /etc/deploy/config
       kube_config:
         from_secret: K8S_CONFIG
@@ -42,10 +40,11 @@ steps:
     commands:
       - mkdir -p /etc/deploy
       - echo $kube_config | base64 -d >> $KUBECONFIG
-      - helm tiller run -- helm upgrade --wait --atomic --install chess-game . --namespace=chess-game --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.registry=registry.oceancraft.ru  --set=imageCredentials.username=$REGISTRY_USER   --set=imageCredentials.password=$REGISTRY_PASSWORD
+      - chmod 700 $KUBECONFIG
+      - helm upgrade --wait --atomic --install chess-game . --namespace=chess-game --set=image.tag=$DRONE_COMMIT_SHA --set=imageCredentials.username=$REGISTRY_USER --set=imageCredentials.password=$REGISTRY_PASSWORD
     when:
       branch:
         - master
 
-node_selector:
-  kubernetes.io/hostname: bucket
+image_pull_secrets:
+  - pull_secret
