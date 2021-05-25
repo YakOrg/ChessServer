@@ -31,6 +31,8 @@ PKG_CLIENT_STATUS = 200
 
 if os.getenv("CI") is not None:
     p = subprocess.Popen(['./chess-server'], stdout=subprocess.DEVNULL)
+    print('Server started')
+    sleep(1)
 
 context.log_level = logging.FATAL
 unittest.TestLoader.sortTestMethodsUsing = None
