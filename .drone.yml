@@ -15,7 +15,7 @@ steps:
   - name: publish
     image: registry.typex.one/env/kaniko:v1.5.1
     settings:
-      registry: registry.oceancraft.ru
+      registry: registry.typex.one
       repo: k8s/chess-server
       tags:
         - ${DRONE_COMMIT_SHA}
